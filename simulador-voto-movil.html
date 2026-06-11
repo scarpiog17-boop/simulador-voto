@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Simulador — Votación por Orden de Preferencia</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #F2F0EB;
+  --ink: #1C1A17;
+  --ink2: #5A5650;
+  --ink3: #9E9A94;
+  --white: #FFFFFF;
+  --border: rgba(0,0,0,0.11);
+  --border2: rgba(0,0,0,0.22);
+  --guava: #D63F6B;
+  --guava-l: #FCE8EF;
+  --mango-t: #7A4E08;
+  --mango: #E8961E;
+  --mango-l: #FEF0D6;
+}
+
+body {
+  background: var(--bg);
+  font-family: 'IBM Plex Sans', sans-serif;
+  color: var(--ink);
+  min-height: 100vh;
+  padding: 2rem 1rem 5rem;
+  /* Prevent scroll while dragging on touch */
+  overscroll-behavior: none;
+}
+.page { max-width: 600px; margin: 0 auto; }
+
+/* HEADER */
+.masthead {
+  text-align: center; margin-bottom: 2rem;
+  padding-bottom: 1.5rem; border-bottom: 2px solid var(--ink);
+}
+.masthead .eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--ink3); margin-bottom: 0.5rem;
+}
+.masthead h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(1.7rem, 6vw, 2.6rem);
+  line-height: 1.1; color: var(--ink); margin-bottom: 0.6rem;
+}
+.masthead p { font-size: 14px; color: var(--ink2); line-height: 1.65; max-width: 440px; margin: 0 auto; text-align: justify; }
+
+.section-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ink3); margin-bottom: 8px;
+}
+
+/* BANCO */
+.bank-list {
+  display: flex; flex-direction: column; gap: 8px;
+  min-height: 60px; margin-bottom: 1.5rem;
+  padding: 4px; border-radius: 8px;
+  transition: background 0.15s, outline 0.15s;
+}
+.bank-list.drag-over {
+  background: rgba(0,0,0,0.03);
+  outline: 2px dashed var(--ink3);
+  outline-offset: 2px;
+}
+.bank-empty {
+  font-size: 13px; color: var(--ink3); font-style: italic; padding: 10px 4px;
+}
+
+/* CANDIDATE CARD */
+.bank-card {
+  display: flex; align-items: center; gap: 12px;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 14px; background: var(--white);
+  cursor: grab; user-select: none; touch-action: none;
+  transition: box-shadow 0.15s, border-color 0.15s, opacity 0.15s;
+  -webkit-user-select: none;
+}
+.bank-card:hover { border-color: var(--border2); box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+.bank-card.dragging { opacity: 0.25; }
+.c-icon { font-size: 24px; flex-shrink: 0; }
+.c-info { flex: 1; }
+.c-name { font-size: 15px; font-weight: 600; }
+.c-party { font-size: 12px; color: var(--ink3); margin-top: 1px; }
+.c-handle { color: var(--ink3); font-size: 18px; padding: 4px; }
+
+/* Ghost element for touch drag */
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.9;
+  transform: scale(1.03);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  border-radius: 6px;
+  background: var(--white);
+  border: 1.5px solid var(--border2);
+  padding: 14px;
+  display: flex; align-items: center; gap: 12px;
+  min-width: 200px;
+  transition: none;
+}
+
+/* TARJETÓN */
+.ballot-wrap {
+  background: var(--white); border: 2px solid var(--ink);
+  border-radius: 4px; margin-bottom: 1.25rem;
+}
+.ballot-header {
+  background: var(--ink); color: var(--white); padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ballot-header span { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.ballot-instruction {
+  font-size: 12px; color: var(--ink2);
+  padding: 10px 20px; background: #F7F5F0;
+  border-bottom: 1px solid var(--border);
+}
+.ballot-slots { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+
+/* SLOT */
+.ballot-slot {
+  display: flex; align-items: center; gap: 12px;
+  border: 1.5px dashed var(--border2); border-radius: 6px;
+  padding: 14px; background: #FAFAF8; min-height: 62px;
+  transition: background 0.15s, border-color 0.15s;
+  position: relative;
+}
+.ballot-slot.drag-over {
+  background: #EEF0E8; border-color: var(--ink); border-style: solid;
+}
+.ballot-slot.filled { border-style: solid; border-color: var(--border); background: var(--white); cursor: grab; touch-action: none; }
+.ballot-slot.dragging { opacity: 0.25; }
+
+.slot-num {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; flex-shrink: 0;
+  border: 1.5px solid var(--border2); color: var(--ink); background: #F0EDE8;
+}
+.slot-placeholder { font-size: 13px; color: var(--ink3); font-style: italic; }
+.slot-icon { font-size: 24px; flex-shrink: 0; }
+.slot-info { flex: 1; }
+.slot-name { font-size: 15px; font-weight: 600; }
+.slot-party { font-size: 12px; color: var(--ink3); margin-top: 1px; }
+.slot-remove {
+  background: none; border: none; cursor: pointer;
+  font-size: 18px; color: var(--ink3); padding: 6px 8px;
+  border-radius: 4px; line-height: 1; flex-shrink: 0;
+  min-width: 36px; min-height: 36px;
+  display: flex; align-items: center; justify-content: center;
+}
+.slot-remove:hover { color: var(--guava); background: var(--guava-l); }
+
+/* SUBMIT */
+.submit-btn {
+  width: 100%; padding: 16px; background: var(--ink); color: var(--white);
+  border: none; border-radius: 4px; font-size: 16px;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 600;
+  cursor: pointer; letter-spacing: 0.02em; transition: opacity 0.15s;
+  margin-bottom: 1.25rem; min-height: 52px;
+}
+.submit-btn:hover:not(:disabled) { opacity: 0.85; }
+.submit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* RESULTS */
+.results-section { display: none; }
+.results-section.visible { display: block; }
+.results-header { text-align: center; margin-bottom: 1.25rem; }
+.results-header h2 { font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 0.25rem; }
+.results-header p { font-size: 13px; color: var(--ink2); }
+
+.round-block { margin-bottom: 1rem; }
+.round-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink3); margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.round-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.winner-badge {
+  font-size: 11px; padding: 2px 9px; border-radius: 99px;
+  background: var(--mango-l); color: var(--mango-t); border: 1px solid var(--mango);
+  font-weight: 600; letter-spacing: 0; text-transform: none;
+}
+.round-card {
+  background: var(--white); border: 1.5px solid var(--border);
+  border-radius: 6px; padding: 1.1rem 1.25rem;
+}
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.bar-row:last-of-type { margin-bottom: 0; }
+.bar-icon { font-size: 16px; flex-shrink: 0; width: 22px; text-align: center; }
+.bar-name { width: 68px; font-size: 12px; font-weight: 500; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { flex: 1; height: 22px; background: #F2F0EB; border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 0; transition: width 0.5s ease; }
+.bar-total { font-size: 11px; color: var(--ink2); min-width: 34px; text-align: right; }
+.elim-note {
+  margin-top: 10px; padding: 8px 12px; background: #FDF0F0;
+  border-left: 3px solid var(--guava); border-radius: 0 4px 4px 0;
+  font-size: 12px; color: var(--ink2); line-height: 1.5;
+}
+.elim-note strong { color: var(--guava); }
+.vote-again-btn {
+  width: 100%; padding: 14px; background: transparent; color: var(--ink);
+  border: 1.5px solid var(--border2); border-radius: 4px; font-size: 15px;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;
+  cursor: pointer; margin-top: 1rem; transition: background 0.15s; min-height: 52px;
+}
+.vote-again-btn:hover { background: rgba(0,0,0,0.04); }
+
+/* MOBILE */
+@media (max-width: 480px) {
+  body { padding: 1rem 0.75rem 4rem; }
+  .masthead { margin-bottom: 1.5rem; padding-bottom: 1.25rem; }
+  .masthead h1 { font-size: 1.6rem; }
+  .masthead p { font-size: 13px; }
+  .ballot-header { padding: 12px 14px; }
+  .ballot-instruction { padding: 9px 14px; }
+  .ballot-slots { padding: 10px 12px; gap: 7px; }
+  .bank-list { gap: 7px; }
+  .c-name, .slot-name { font-size: 14px; }
+  .c-party, .slot-party { font-size: 11px; }
+  .bar-name { width: 52px; font-size: 11px; }
+  .bar-track { height: 20px; }
+  .round-card { padding: 0.9rem 1rem; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <div class="eyebrow">República de Frutelandia</div>
+    <h1>Elecciones Presidenciales</h1>
+    <p>El voto por orden de preferencia es un sistema de votación que empodera a ciudadanos al permitir que voten por más de un candidato. Arrastra cada candidato desde el banco hasta el tarjetón y ordénalos según tu preferencia.</p>
+  </div>
+
+  <div id="voting-section">
+    <div class="section-label">Banco de candidatos</div>
+    <div class="bank-list" id="bank-list"></div>
+
+    <div class="ballot-wrap">
+      <div class="ballot-header">
+        <span>Tarjetón Electoral</span>
+        <span>🗳️</span>
+      </div>
+      <div class="ballot-instruction">Ordena los candidatos aquí de mayor a menor preferencia. El primero debe ser tu favorito.</div>
+      <div class="ballot-slots" id="ballot-slots"></div>
+    </div>
+
+    <button class="submit-btn" id="submit-btn" onclick="submitVote()" disabled>
+      Ubica todos los candidatos para votar
+    </button>
+  </div>
+
+  <div class="results-section" id="results-section">
+    <div class="results-header">
+      <h2>Resultados Nacionales</h2>
+      <p>Tu voto sumado a los votos del resto del país</p>
+    </div>
+    <div id="rounds-area"></div>
+    <button class="vote-again-btn" onclick="resetVote()">← Votar de nuevo</button>
+  </div>
+
+</div>
+<script>
+const CANDIDATES = [
+  { id: 'limon', name: 'Limón', party: 'Alianza Verde',     icon: '🍋', color: '#1A7A40', light: '#2F9E5A' },
+  { id: 'mango', name: 'Mango',  party: 'Partido Tropical',  icon: '🥭', color: '#C97000', light: '#E89520' },
+  { id: 'uva',   name: 'Uva',   party: 'Movimiento Morado', icon: '🍇', color: '#5A2EA6', light: '#7B4FD4' },
+  { id: 'fresa', name: 'Fresa', party: 'Frente Rojo',       icon: '🍓', color: '#B01F4A', light: '#D63F6B' },
+];
+const N = CANDIDATES.length;
+
+const BALLOT_GROUPS = [
+  { ballot: ['mango','fresa','uva','limon'],  n: 300 },
+  { ballot: ['mango','limon','fresa','uva'],  n:  80 },
+  { ballot: ['uva','mango','fresa','limon'],  n: 200 },
+  { ballot: ['uva','fresa','mango','limon'],  n:  80 },
+  { ballot: ['fresa','uva','mango','limon'],  n: 180 },
+  { ballot: ['fresa','mango','uva','limon'],  n:  30 },
+  { ballot: ['limon','uva','fresa','mango'],  n: 130 },
+];
+
+let bankIds   = CANDIDATES.map(c => c.id);
+let ballotIds = new Array(N).fill(null);
+
+// ── DRAG STATE ────────────────────────────────────────────
+let dragState = null;
+// dragState = { id, from: 'bank'|{slot:i}, ghost, startX, startY }
+
+// ── RENDER ────────────────────────────────────────────────
+function render() {
+  renderBank();
+  renderSlots();
+  updateSubmitBtn();
+}
+
+function cardHTML(c) {
+  return `<div class="c-icon">${c.icon}</div>
+          <div class="c-info"><div class="c-name">${c.name}</div><div class="c-party">${c.party}</div></div>
+          <div class="c-handle">⠿</div>`;
+}
+
+function renderBank() {
+  const list = document.getElementById('bank-list');
+  list.innerHTML = '';
+
+  if (bankIds.length === 0) {
+    list.innerHTML = '<div class="bank-empty">Todos los candidatos están en el tarjetón.</div>';
+  } else {
+    bankIds.forEach(id => {
+      const c = CANDIDATES.find(x => x.id === id);
+      const card = document.createElement('div');
+      card.className = 'bank-card';
+      card.innerHTML = cardHTML(c);
+      addDragListeners(card, id, 'bank');
+      list.appendChild(card);
+    });
+  }
+
+  // Bank drop zone (return from slots)
+  list.addEventListener('dragover', e => { e.preventDefault(); list.classList.add('drag-over'); });
+  list.addEventListener('dragleave', e => { if (!list.contains(e.relatedTarget)) list.classList.remove('drag-over'); });
+  list.addEventListener('drop', e => {
+    e.preventDefault(); list.classList.remove('drag-over');
+    if (!dragState || dragState.from === 'bank') return;
+    ballotIds[dragState.from.slot] = null;
+    if (!bankIds.includes(dragState.id)) bankIds.push(dragState.id);
+    dragState = null; render();
+  });
+}
+
+function renderSlots() {
+  const container = document.getElementById('ballot-slots');
+  container.innerHTML = '';
+  for (let i = 0; i < N; i++) {
+    const id = ballotIds[i];
+    const slot = document.createElement('div');
+    slot.className = 'ballot-slot' + (id ? ' filled' : '');
+    slot.dataset.slot = i;
+
+    const num = document.createElement('div');
+    num.className = 'slot-num';
+    num.textContent = i + 1;
+    slot.appendChild(num);
+
+    if (id) {
+      const c = CANDIDATES.find(x => x.id === id);
+      slot.innerHTML += `<div class="slot-icon">${c.icon}</div>
+        <div class="slot-info"><div class="slot-name">${c.name}</div><div class="slot-party">${c.party}</div></div>`;
+      const btn = document.createElement('button');
+      btn.className = 'slot-remove'; btn.title = 'Devolver al banco'; btn.textContent = '✕';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        ballotIds[i] = null;
+        if (!bankIds.includes(id)) bankIds.push(id);
+        render();
+      });
+      slot.appendChild(btn);
+      addDragListeners(slot, id, { slot: i });
+    } else {
+      const ph = document.createElement('div');
+      ph.className = 'slot-placeholder';
+      ph.textContent = (i + 1) + 'ª preferencia';
+      slot.appendChild(ph);
+    }
+
+    // Drop zone
+    slot.addEventListener('dragover', e => { e.preventDefault(); slot.classList.add('drag-over'); });
+    slot.addEventListener('dragleave', e => { if (!slot.contains(e.relatedTarget)) slot.classList.remove('drag-over'); });
+    slot.addEventListener('drop', e => {
+      e.preventDefault(); slot.classList.remove('drag-over');
+      if (!dragState) return;
+      dropOntoSlot(i);
+    });
+
+    container.appendChild(slot);
+  }
+}
+
+function dropOntoSlot(i) {
+  const { id, from } = dragState;
+  const existing = ballotIds[i];
+  if (from === 'bank') {
+    if (existing) bankIds.push(existing);
+    ballotIds[i] = id;
+    bankIds = bankIds.filter(x => x !== id);
+  } else {
+    const src = from.slot;
+    if (src === i) { dragState = null; return; }
+    ballotIds[i] = id;
+    ballotIds[src] = existing || null;
+  }
+  dragState = null;
+  render();
+}
+
+function updateSubmitBtn() {
+  const btn = document.getElementById('submit-btn');
+  const remaining = ballotIds.filter(id => !id).length;
+  btn.disabled = remaining > 0;
+  btn.textContent = remaining > 0
+    ? `Faltan ${remaining} candidato${remaining > 1 ? 's' : ''} por ubicar`
+    : 'Enviar mi voto →';
+}
+
+// ── DRAG & TOUCH LISTENERS ────────────────────────────────
+function addDragListeners(el, id, from) {
+  // Desktop drag
+  el.draggable = true;
+  el.addEventListener('dragstart', e => {
+    dragState = { id, from };
+    setTimeout(() => el.classList.add('dragging'), 0);
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  el.addEventListener('dragend', () => el.classList.remove('dragging'));
+
+  // Touch drag
+  el.addEventListener('touchstart', e => onTouchStart(e, id, from, el), { passive: false });
+}
+
+function onTouchStart(e, id, from, el) {
+  // Don't hijack remove button taps
+  if (e.target.classList.contains('slot-remove')) return;
+  e.preventDefault();
+
+  const touch = e.touches[0];
+  const rect = el.getBoundingClientRect();
+
+  // Create ghost
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  const c = CANDIDATES.find(x => x.id === id);
+  ghost.innerHTML = cardHTML(c);
+  ghost.style.width = rect.width + 'px';
+  ghost.style.left = (touch.clientX - rect.width / 2) + 'px';
+  ghost.style.top  = (touch.clientY - rect.height / 2) + 'px';
+  document.body.appendChild(ghost);
+
+  dragState = { id, from, ghost, offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top };
+  el.classList.add('dragging');
+
+  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  document.addEventListener('touchend', onTouchEnd);
+}
+
+function onTouchMove(e) {
+  e.preventDefault();
+  if (!dragState || !dragState.ghost) return;
+  const touch = e.touches[0];
+  const ghost = dragState.ghost;
+  ghost.style.left = (touch.clientX - dragState.offsetX) + 'px';
+  ghost.style.top  = (touch.clientY - dragState.offsetY) + 'px';
+
+  // Highlight drop zones
+  ghost.style.display = 'none';
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  ghost.style.display = '';
+
+  document.querySelectorAll('.ballot-slot, .bank-list').forEach(z => z.classList.remove('drag-over'));
+  if (target) {
+    const slot = target.closest('.ballot-slot');
+    const bank = target.closest('.bank-list');
+    if (slot) slot.classList.add('drag-over');
+    else if (bank) bank.classList.add('drag-over');
+  }
+}
+
+function onTouchEnd(e) {
+  document.removeEventListener('touchmove', onTouchMove);
+  document.removeEventListener('touchend', onTouchEnd);
+
+  if (!dragState) return;
+
+  const touch = e.changedTouches[0];
+  if (dragState.ghost) dragState.ghost.remove();
+  document.querySelectorAll('.ballot-slot, .bank-list').forEach(z => z.classList.remove('drag-over'));
+  document.querySelectorAll('.dragging').forEach(z => z.classList.remove('dragging'));
+
+  // Find drop target
+  const target = document.elementFromPoint(touch.clientX, touch.clientY);
+  if (target) {
+    const slot = target.closest('.ballot-slot');
+    const bank = target.closest('.bank-list');
+    if (slot !== null) {
+      const i = parseInt(slot.dataset.slot);
+      dropOntoSlot(i);
+      return;
+    } else if (bank && dragState.from !== 'bank') {
+      ballotIds[dragState.from.slot] = null;
+      if (!bankIds.includes(dragState.id)) bankIds.push(dragState.id);
+      dragState = null;
+      render();
+      return;
+    }
+  }
+  dragState = null;
+  render();
+}
+
+// ── SUBMIT ────────────────────────────────────────────────
+function submitVote() {
+  const userRanking = [...ballotIds];
+  document.getElementById('voting-section').style.display = 'none';
+  document.getElementById('results-section').classList.add('visible');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  computeRCV(userRanking);
+}
+
+// ── RCV ───────────────────────────────────────────────────
+function computeRCV(userRanking) {
+  const roundsArea = document.getElementById('rounds-area');
+  roundsArea.innerHTML = '';
+  const countryBallots = generateCountryBallots();
+  const allBallots = [...countryBallots, userRanking];
+  const total = allBallots.length;
+  let eliminated = new Set();
+
+  for (let round = 0; round < N; round++) {
+    const active = CANDIDATES.map(c => c.id).filter(id => !eliminated.has(id));
+    const counts = {};
+    active.forEach(id => counts[id] = 0);
+    let userTopChoice = null;
+    allBallots.forEach((ballot, bi) => {
+      const top = ballot.find(id => !eliminated.has(id));
+      if (top) { counts[top]++; if (bi === allBallots.length - 1) userTopChoice = top; }
+    });
+    const sorted = active.slice().sort((a, b) => counts[b] - counts[a]);
+    const isWin = counts[sorted[0]] / total > 0.5 || active.length <= 2;
+    renderRound(round + 1, sorted, counts, total, isWin, isWin ? null : sorted[sorted.length - 1], roundsArea);
+    if (isWin) break;
+    eliminated.add(sorted[sorted.length - 1]);
+  }
+}
+
+function generateCountryBallots() {
+  const ballots = [];
+  BALLOT_GROUPS.forEach(({ ballot, n }) => {
+    for (let i = 0; i < n; i++) ballots.push(ballot);
+  });
+  return ballots;
+}
+
+function renderRound(roundNum, sorted, counts, total, isWin, loser, container) {
+  const block = document.createElement('div');
+  block.className = 'round-block';
+
+  const label = document.createElement('div');
+  label.className = 'round-label';
+  label.innerHTML = `Ronda ${roundNum}`;
+  if (isWin) {
+    const winner = CANDIDATES.find(c => c.id === sorted[0]);
+    const badge = document.createElement('span');
+    badge.className = 'winner-badge';
+    badge.textContent = `🏆 ${winner.icon} ${winner.name} gana`;
+    label.appendChild(badge);
+  }
+  block.appendChild(label);
+
+  const card = document.createElement('div');
+  card.className = 'round-card';
+
+  sorted.forEach(id => {
+    const c = CANDIDATES.find(x => x.id === id);
+    const count = counts[id] || 0;
+    const pct = (count / total * 100).toFixed(1);
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `
+      <div class="bar-icon">${c.icon}</div>
+      <div class="bar-name">${c.name}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${c.color};"></div></div>
+      <div class="bar-total">${pct}%</div>
+    `;
+    card.appendChild(row);
+  });
+
+  if (loser) {
+    const lc = CANDIDATES.find(c => c.id === loser);
+    const note = document.createElement('div');
+    note.className = 'elim-note';
+    note.innerHTML = `<strong>${lc.icon} ${lc.name}</strong> es eliminado/a por tener menos votos. Sus votos se transfieren a la siguiente preferencia de cada votante.`;
+    card.appendChild(note);
+  }
+
+  block.appendChild(card);
+  container.appendChild(block);
+}
+
+// ── RESET ─────────────────────────────────────────────────
+function resetVote() {
+  bankIds = CANDIDATES.map(c => c.id);
+  ballotIds = new Array(N).fill(null);
+  dragState = null;
+  render();
+  document.getElementById('voting-section').style.display = 'block';
+  document.getElementById('results-section').classList.remove('visible');
+  document.getElementById('rounds-area').innerHTML = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+render();
+</script>
+</body>
+</html>
